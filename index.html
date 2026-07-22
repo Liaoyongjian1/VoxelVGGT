@@ -127,6 +127,17 @@
                     <div class="flex flex-col items-center">
                         <div class="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
                         <span id="loading-text" class="text-sm font-mono">Loading 3D Voxel Space...</span>
+                        <div id="loading-progress-container" class="hidden w-72 mt-4">
+                            <div class="h-2 bg-slate-700 rounded-full overflow-hidden">
+                                <div id="loading-progress-bar"
+                                     class="h-full bg-blue-500 transition-all duration-150"
+                                     style="width: 0%;"></div>
+                            </div>
+                            <div id="loading-progress-label"
+                                 class="mt-2 text-xs font-mono text-slate-300 text-center">
+                                0%
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -220,6 +231,12 @@
     <script>
         const container = document.getElementById('canvas-container');
         const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingProgressContainer =
+            document.getElementById('loading-progress-container');
+        const loadingProgressBar =
+            document.getElementById('loading-progress-bar');
+        const loadingProgressLabel =
+            document.getElementById('loading-progress-label');
         const pointCountEl = document.getElementById('point-count');
         const memUsageEl = document.getElementById('mem-usage');
         const sceneNameDisplay = document.getElementById('scene-name-display');
@@ -319,11 +336,37 @@
             document.getElementById('loading-text').innerText = message;
         }
 
+        function resetLoadingProgress() {
+            loadingProgressContainer.classList.add('hidden');
+            loadingProgressBar.classList.remove('animate-pulse');
+            loadingProgressBar.style.width = '0%';
+            loadingProgressLabel.innerText = '0%';
+        }
+
+        function setLoadingProgress(percent, label) {
+            loadingProgressContainer.classList.remove('hidden');
+
+            if (Number.isFinite(percent)) {
+                const boundedPercent =
+                    Math.min(100, Math.max(0, percent));
+
+                loadingProgressBar.classList.remove('animate-pulse');
+                loadingProgressBar.style.width =
+                    `${boundedPercent.toFixed(1)}%`;
+            } else {
+                loadingProgressBar.classList.add('animate-pulse');
+                loadingProgressBar.style.width = '100%';
+            }
+
+            loadingProgressLabel.innerText = label;
+        }
+
         function hideLoading() {
             loadingOverlay.style.opacity = '0';
 
             setTimeout(() => {
                 loadingOverlay.style.display = 'none';
+                resetLoadingProgress();
             }, 300);
         }
 
@@ -596,7 +639,7 @@
                         self.postMessage({
                             type: 'status',
                             requestId,
-                            message: 'Downloading the full 618 MB PLY...'
+                            message: 'Preparing point-cloud download...'
                         });
 
                         const response = await fetch(url);
@@ -608,13 +651,121 @@
                             );
                         }
 
-                        const buffer = await response.arrayBuffer();
+                        const contentLengthHeader =
+                            response.headers.get('content-length');
+
+                        const totalBytes =
+                            Number(contentLengthHeader) || 0;
+
+                        let buffer;
+
+                        if (!response.body) {
+                            buffer = await response.arrayBuffer();
+
+                            self.postMessage({
+                                type: 'downloadProgress',
+                                requestId,
+                                loadedBytes: buffer.byteLength,
+                                totalBytes:
+                                    totalBytes || buffer.byteLength
+                            });
+                        } else {
+                            const reader = response.body.getReader();
+                            let receivedBytes = 0;
+                            let lastProgressTime = 0;
+
+                            let target = totalBytes > 0
+                                ? new Uint8Array(totalBytes)
+                                : null;
+
+                            const chunks = target ? null : [];
+
+                            while (true) {
+                                const result = await reader.read();
+
+                                if (result.done) break;
+
+                                const value = result.value;
+
+                                if (target) {
+                                    const requiredSize =
+                                        receivedBytes + value.byteLength;
+
+                                    if (requiredSize > target.byteLength) {
+                                        const grown = new Uint8Array(
+                                            Math.max(
+                                                requiredSize,
+                                                target.byteLength * 2
+                                            )
+                                        );
+
+                                        grown.set(target);
+                                        target = grown;
+                                    }
+
+                                    target.set(value, receivedBytes);
+                                } else {
+                                    chunks.push(value);
+                                }
+
+                                receivedBytes += value.byteLength;
+
+                                const now = Date.now();
+
+                                if (
+                                    now - lastProgressTime >= 100 ||
+                                    (
+                                        totalBytes > 0 &&
+                                        receivedBytes >= totalBytes
+                                    )
+                                ) {
+                                    self.postMessage({
+                                        type: 'downloadProgress',
+                                        requestId,
+                                        loadedBytes: receivedBytes,
+                                        totalBytes
+                                    });
+
+                                    lastProgressTime = now;
+                                }
+                            }
+
+                            self.postMessage({
+                                type: 'downloadProgress',
+                                requestId,
+                                loadedBytes: receivedBytes,
+                                totalBytes:
+                                    totalBytes || receivedBytes
+                            });
+
+                            if (target) {
+                                buffer =
+                                    receivedBytes === target.byteLength
+                                        ? target.buffer
+                                        : target
+                                            .slice(0, receivedBytes)
+                                            .buffer;
+                            } else {
+                                const merged =
+                                    new Uint8Array(receivedBytes);
+
+                                let writeOffset = 0;
+
+                                for (const chunk of chunks) {
+                                    merged.set(chunk, writeOffset);
+                                    writeOffset += chunk.byteLength;
+                                }
+
+                                buffer = merged.buffer;
+                            }
+                        }
+
                         const bytes = new Uint8Array(buffer);
 
                         self.postMessage({
                             type: 'status',
                             requestId,
-                            message: 'Parsing 22.9 million vertices...'
+                            message: 'Download complete. Reading PLY header...'
                         });
 
                         const {
@@ -851,6 +1002,7 @@
             scene.add(activePointCloud);
 
             pointCountEl.innerText = 'Loading...';
+            resetLoadingProgress();
             showLoading('Starting full-resolution point-cloud load...');
 
             pointCloudWorker = createFullPlyWorker();
@@ -865,14 +1017,52 @@
                     return;
                 }
 
+                if (data.type === 'downloadProgress') {
+                    const loadedMB =
+                        data.loadedBytes / (1024 * 1024);
+
+                    if (data.totalBytes > 0) {
+                        const totalMB =
+                            data.totalBytes / (1024 * 1024);
+
+                        const percent =
+                            (data.loadedBytes / data.totalBytes) * 100;
+
+                        showLoading(
+                            `Downloading point cloud: ` +
+                            `${percent.toFixed(1)}%`
+                        );
+
+                        setLoadingProgress(
+                            percent,
+                            `${loadedMB.toFixed(1)} / ` +
+                            `${totalMB.toFixed(1)} MiB`
+                        );
+                    } else {
+                        showLoading('Downloading point cloud...');
+
+                        setLoadingProgress(
+                            Number.NaN,
+                            `${loadedMB.toFixed(1)} MiB downloaded`
+                        );
+                    }
+
+                    return;
+                }
+
                 if (data.type === 'progress') {
                     const percent =
-                        ((data.loaded / data.total) * 100).toFixed(1);
+                        (data.loaded / data.total) * 100;
 
                     showLoading(
-                        `Parsing full point cloud: ${percent}% ` +
-                        `(${data.loaded.toLocaleString()} / ` +
-                        `${data.total.toLocaleString()} points)`
+                        `Parsing full point cloud: ` +
+                        `${percent.toFixed(1)}%`
+                    );
+
+                    setLoadingProgress(
+                        percent,
+                        `${data.loaded.toLocaleString()} / ` +
+                        `${data.total.toLocaleString()} points`
                     );
 
                     return;
