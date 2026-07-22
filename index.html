@@ -256,11 +256,174 @@
         };
 
         let activePointCloud = null;
+        let pointCloudLoadRequestId = 0;
 
-        // Synthetic Generator for Distinct Scene Geometries
+        const plyLoader = new THREE.PLYLoader();
+        const HUGGING_FACE_PLY_URL =
+            'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkichens/voxelVGGT.ply';
+
+        function showLoading(message) {
+            loadingOverlay.style.display = 'flex';
+            loadingOverlay.style.opacity = '1';
+            document.getElementById('loading-text').innerText = message;
+        }
+
+        function hideLoading() {
+            loadingOverlay.style.opacity = '0';
+
+            setTimeout(() => {
+                loadingOverlay.style.display = 'none';
+            }, 300);
+        }
+
+        function disposePointCloud(pointCloud) {
+            if (!pointCloud) return;
+
+            scene.remove(pointCloud);
+
+            if (pointCloud.geometry) {
+                pointCloud.geometry.dispose();
+            }
+
+            if (pointCloud.material) {
+                pointCloud.material.dispose();
+            }
+        }
+
+        function fitCameraToPointCloud(geometry) {
+            geometry.computeBoundingSphere();
+            const sphere = geometry.boundingSphere;
+
+            if (
+                !sphere ||
+                !Number.isFinite(sphere.radius) ||
+                sphere.radius <= 0
+            ) {
+                console.warn('Cannot determine point-cloud bounds.');
+                return;
+            }
+
+            const center = sphere.center;
+            const radius = Math.max(sphere.radius, 0.01);
+
+            controls.target.copy(center);
+
+            camera.position.set(
+                center.x + radius * 1.4,
+                center.y + radius * 0.8,
+                center.z + radius * 2.2
+            );
+
+            camera.near = Math.max(radius / 1000, 0.01);
+            camera.far = Math.max(radius * 100, 1000);
+            camera.updateProjectionMatrix();
+
+            controls.minDistance = Math.max(radius * 0.01, 0.01);
+            controls.maxDistance = radius * 20;
+            controls.update();
+        }
+
+        function loadPointCloud(url) {
+            const requestId = ++pointCloudLoadRequestId;
+
+            showLoading('Connecting to Hugging Face...');
+
+            plyLoader.load(
+                url,
+
+                function (geometry) {
+                    if (requestId !== pointCloudLoadRequestId) {
+                        geometry.dispose();
+                        return;
+                    }
+
+                    const position = geometry.getAttribute('position');
+
+                    if (!position || position.count === 0) {
+                        geometry.dispose();
+                        showLoading('PLY file contains no valid vertices.');
+                        return;
+                    }
+
+                    geometry.computeBoundingSphere();
+
+                    const radius =
+                        geometry.boundingSphere &&
+                        Number.isFinite(geometry.boundingSphere.radius)
+                            ? geometry.boundingSphere.radius
+                            : 1;
+
+                    const hasVertexColor = geometry.hasAttribute('color');
+
+                    const material = new THREE.PointsMaterial({
+                        size: Math.max(radius / 1500, 0.002),
+                        sizeAttenuation: true,
+                        vertexColors: hasVertexColor,
+                        color: hasVertexColor ? 0xffffff : 0x38bdf8,
+                        transparent: true,
+                        opacity: 0.95
+                    });
+
+                    disposePointCloud(activePointCloud);
+
+                    activePointCloud = new THREE.Points(
+                        geometry,
+                        material
+                    );
+
+                    scene.add(activePointCloud);
+
+                    pointCountEl.innerText =
+                        position.count.toLocaleString();
+
+                    fitCameraToPointCloud(geometry);
+                    hideLoading();
+
+                    console.log(
+                        `Loaded ${position.count.toLocaleString()} points`
+                    );
+                },
+
+                function (xhr) {
+                    if (requestId !== pointCloudLoadRequestId) return;
+
+                    const downloadedMB =
+                        (xhr.loaded / 1024 / 1024).toFixed(1);
+
+                    if (xhr.lengthComputable && xhr.total > 0) {
+                        const progress =
+                            ((xhr.loaded / xhr.total) * 100).toFixed(1);
+
+                        const totalMB =
+                            (xhr.total / 1024 / 1024).toFixed(1);
+
+                        showLoading(
+                            `Downloading: ${progress}% ` +
+                            `(${downloadedMB}/${totalMB} MB)`
+                        );
+                    } else {
+                        showLoading(
+                            `Downloaded ${downloadedMB} MB...`
+                        );
+                    }
+                },
+
+                function (error) {
+                    if (requestId !== pointCloudLoadRequestId) return;
+
+                    console.error('Failed to load PLY:', error);
+                    showLoading(
+                        'Failed to load point cloud. ' +
+                        'Open Developer Tools for details.'
+                    );
+                }
+            );
+        }
+
+        // Synthetic Generator for the remaining placeholder combinations.
         function generateSyntheticPointCloud(sceneType, methodType) {
             let count, spreadX, spreadY, spreadZ, driftFactor;
-            
+
             if (sceneType === 'chess') {
                 count = methodType === 'streamvggt' ? 280000 : 120000;
                 spreadX = 8; spreadY = 4; spreadZ = 8; driftFactor = 0.1;
@@ -279,20 +442,37 @@
             const positions = new Float32Array(count * 3);
             const colors = new Float32Array(count * 3);
 
-            const baseColor = new THREE.Color(methodType === 'voxelvggt' ? '#38bdf8' : (methodType === 'gt' ? '#34d399' : '#f87171'));
-            const farColor = new THREE.Color(sceneType === 'driving' ? '#f59e0b' : '#818cf8');
+            const baseColor = new THREE.Color(
+                methodType === 'voxelvggt'
+                    ? '#38bdf8'
+                    : (methodType === 'gt' ? '#34d399' : '#f87171')
+            );
+
+            const farColor = new THREE.Color(
+                sceneType === 'driving' ? '#f59e0b' : '#818cf8'
+            );
 
             for (let i = 0; i < count; i++) {
                 let x = (Math.random() - 0.5) * spreadX;
                 let y = (Math.random() - 0.5) * spreadY;
                 let z = (Math.random() - 0.5) * spreadZ;
 
-                // Apply trajectory drift noise for baseline methods
-                if (methodType === 'streamvggt' && z > spreadZ * 0.2) {
-                    x += (z - spreadZ * 0.2) * driftFactor * (Math.random() - 0.5);
+                if (
+                    methodType === 'streamvggt' &&
+                    z > spreadZ * 0.2
+                ) {
+                    x +=
+                        (z - spreadZ * 0.2) *
+                        driftFactor *
+                        (Math.random() - 0.5);
+
                     y += (Math.random() - 0.5) * 0.5;
                 }
-                if (methodType === 'cut3r' && z > spreadZ * 0.3) {
+
+                if (
+                    methodType === 'cut3r' &&
+                    z > spreadZ * 0.3
+                ) {
                     x += driftFactor * 2;
                 }
 
@@ -300,11 +480,18 @@
                 positions[i * 3 + 1] = y;
                 positions[i * 3 + 2] = z;
 
-                const depthRatio = (z + spreadZ / 2) / spreadZ;
-                const mixedColor = baseColor.clone().lerp(farColor, depthRatio);
-                
-                if (methodType !== 'voxelvggt' && methodType !== 'gt' && Math.random() > 0.82) {
-                    mixedColor.set('#64748b'); // Add noise color artifacts for baselines
+                const depthRatio =
+                    (z + spreadZ / 2) / spreadZ;
+
+                const mixedColor =
+                    baseColor.clone().lerp(farColor, depthRatio);
+
+                if (
+                    methodType !== 'voxelvggt' &&
+                    methodType !== 'gt' &&
+                    Math.random() > 0.82
+                ) {
+                    mixedColor.set('#64748b');
                 }
 
                 colors[i * 3] = mixedColor.r;
@@ -312,8 +499,15 @@
                 colors[i * 3 + 2] = mixedColor.b;
             }
 
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+            geometry.setAttribute(
+                'position',
+                new THREE.BufferAttribute(positions, 3)
+            );
+
+            geometry.setAttribute(
+                'color',
+                new THREE.BufferAttribute(colors, 3)
+            );
 
             const material = new THREE.PointsMaterial({
                 size: methodType === 'voxelvggt' ? 0.04 : 0.03,
@@ -325,37 +519,58 @@
             return new THREE.Points(geometry, material);
         }
 
-        // Initialize All Scenes and Methods
+        // Initialize metadata only. Point clouds are created or downloaded on demand.
         function initDatabase() {
             const scenes = ['chess', 'office', 'driving'];
             const methods = ['voxelvggt', 'streamvggt', 'cut3r', 'gt'];
 
             scenes.forEach(s => {
                 methods.forEach(m => {
-                    let pts = "120,000"; let mem = "8.2 GB (O(1))"; let color = "text-emerald-400";
-                    if (m === 'streamvggt') { pts = "480,000"; mem = "28.4 GB (OOM Risk)"; color = "text-rose-500"; }
-                    if (m === 'cut3r') { pts = "310,000"; mem = "18.6 GB (O(T))"; color = "text-amber-400"; }
-                    if (m === 'gt') { pts = "115,000"; mem = "Ground Truth Reference"; color = "text-sky-400"; }
-                    if (s === 'driving' && m === 'streamvggt') { pts = "620,000"; mem = "34.1 GB (OOM)"; }
-                    if (s === 'driving' && m === 'voxelvggt') { pts = "142,000"; mem = "8.4 GB (O(1))"; }
+                    let pts = "120,000";
+                    let mem = "8.2 GB (O(1))";
+                    let color = "text-emerald-400";
+
+                    if (m === 'streamvggt') {
+                        pts = "480,000";
+                        mem = "28.4 GB (OOM Risk)";
+                        color = "text-rose-500";
+                    }
+
+                    if (m === 'cut3r') {
+                        pts = "310,000";
+                        mem = "18.6 GB (O(T))";
+                        color = "text-amber-400";
+                    }
+
+                    if (m === 'gt') {
+                        pts = "115,000";
+                        mem = "Ground Truth Reference";
+                        color = "text-sky-400";
+                    }
+
+                    if (s === 'driving' && m === 'streamvggt') {
+                        pts = "620,000";
+                        mem = "34.1 GB (OOM)";
+                    }
+
+                    if (s === 'driving' && m === 'voxelvggt') {
+                        pts = "142,000";
+                        mem = "8.4 GB (O(1))";
+                    }
 
                     sceneDatabase[s].methods[m] = {
-                        pc: generateSyntheticPointCloud(s, m),
                         pts: pts,
                         mem: mem,
-                        memColor: color
+                        memColor: color,
+                        url:
+                            s === 'chess' && m === 'voxelvggt'
+                                ? HUGGING_FACE_PLY_URL
+                                : null
                     };
                 });
             });
 
-            // Set default view
-            activePointCloud = sceneDatabase['chess'].methods['voxelvggt'].pc;
-            scene.add(activePointCloud);
-            
-            setTimeout(() => {
-                loadingOverlay.style.opacity = '0';
-                setTimeout(() => loadingOverlay.style.display = 'none', 300);
-            }, 500);
+            updateRenderedPointCloud();
         }
 
         // Switch Scene (Resets camera to optimize geometry framing)
@@ -363,12 +578,13 @@
             if (!sceneDatabase[sceneKey]) return;
             currentScene = sceneKey;
 
-            document.querySelectorAll('.scene-btn').forEach(btn => btn.classList.remove('scene-btn-active'));
-            btnElement.classList.add('scene-btn-active');
+            document.querySelectorAll('.scene-btn').forEach(btn => {
+                btn.classList.remove('scene-btn-active');
+            });
 
+            btnElement.classList.add('scene-btn-active');
             sceneNameDisplay.innerText = sceneDatabase[sceneKey].name;
 
-            // Reset camera for new scene dimensions
             camera.position.copy(sceneDatabase[sceneKey].cameraPos);
             controls.target.set(0, 0, 0);
             controls.update();
@@ -381,23 +597,43 @@
             if (!sceneDatabase[currentScene].methods[methodKey]) return;
             currentMethod = methodKey;
 
-            document.querySelectorAll('.method-btn').forEach(btn => btn.classList.remove('btn-active'));
-            btnElement.classList.add('btn-active');
+            document.querySelectorAll('.method-btn').forEach(btn => {
+                btn.classList.remove('btn-active');
+            });
 
+            btnElement.classList.add('btn-active');
             updateRenderedPointCloud();
         };
 
         function updateRenderedPointCloud() {
-            const data = sceneDatabase[currentScene].methods[currentMethod];
+            const data =
+                sceneDatabase[currentScene].methods[currentMethod];
+
             if (!data) return;
 
-            if (activePointCloud) scene.remove(activePointCloud);
-            activePointCloud = data.pc;
-            scene.add(activePointCloud);
-
-            pointCountEl.innerText = data.pts;
             memUsageEl.innerText = data.mem;
-            memUsageEl.className = `font-bold ${data.memColor}`;
+            memUsageEl.className =
+                `font-bold ${data.memColor}`;
+
+            if (data.url) {
+                pointCountEl.innerText = 'Loading...';
+                loadPointCloud(data.url);
+                return;
+            }
+
+            // Invalidate any previous remote request before showing a placeholder.
+            pointCloudLoadRequestId += 1;
+
+            disposePointCloud(activePointCloud);
+
+            activePointCloud = generateSyntheticPointCloud(
+                currentScene,
+                currentMethod
+            );
+
+            scene.add(activePointCloud);
+            pointCountEl.innerText = data.pts;
+            hideLoading();
         }
 
         // 4. Render Loop
