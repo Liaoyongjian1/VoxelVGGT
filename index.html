@@ -137,7 +137,29 @@
     <section id="abstract" class="max-w-4xl mx-auto px-4 py-12">
         <h2 class="text-2xl font-bold text-gray-900 mb-4 border-b pb-2">Abstract</h2>
         <p class="text-gray-700 leading-relaxed mb-6 text-justify">
-            Unified visual geometry models jointly predict camera pose, depth, and point maps in a single feed-forward pass, yet extending them to long-horizon streaming remains difficult due to linear memory growth. We present <strong>VoxelVGGT</strong>, a training-free streaming feed-forward framework based on two core mechanisms: a <em>keyframe-constrained reference frame</em> that stabilizes local 3D coordinates via an anchor ring without rewriting stored positions, and a <em>voxelized geometric memory</em> that deduplicates patch tokens by shared voxel coordinates. This guarantees that memory budget is spent on covering distinct spatial regions rather than accumulating redundant re-observations.
+           Unified visual geometry models jointly predict camera pose, depth, and
+        point maps in a single feed-forward pass, yet their strongest
+        formulations remain offline because they assume one-shot access to all
+        views. Extending them to streaming is difficult for a single reason:
+        reference-frame maintenance, geometric-memory organization, and
+        budget-bounded retention form one coupled state-management problem
+        rather than separable design choices. We present
+        <strong>VoxelVGGT</strong>, a training-free streaming feed-forward
+        framework with two main mechanisms: a
+        <em>keyframe-constrained reference frame</em> that fixes a stable local
+        3D coordinate system through a permanent global anchor and a bounded
+        FIFO ring of history anchors, so that retained tokens stay interpretable
+        across keyframe rotations without rewriting their stored positions; and
+        a <em>voxelized geometric memory</em> that lifts patch tokens into the
+        keyframe-local 3D space and deduplicates them by shared voxel
+        coordinates, so that a fixed per-layer token budget is spent on
+        distinct spatial regions rather than on redundant re-observations.
+        Because both mechanisms consume the predicted camera pose, we
+        supplement them with a decoupled, bounded-memory pose-aware reference
+        cache that suppresses long-horizon pose drift. On 3D reconstruction,
+        camera pose, and video depth, <strong>VoxelVGGT</strong> keeps memory
+        constant in sequence length while remaining competitive with streaming
+        and stateful baselines.
         </p>
     </section>
 
