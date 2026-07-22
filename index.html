@@ -277,20 +277,37 @@
         };
 
         let activePointCloud = null;
+        let activePointCloudKey = null;
+        let loadingPointCloudKey = null;
+        let fittedSceneKey = null;
         let pointCloudLoadRequestId = 0;
         let pointCloudWorker = null;
 
         const HUGGING_FACE_PLY_URLS = {
-            voxelvggt:
-                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/voxelVGGT.ply',
-            infinitevggt:
-                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/infiniteVGGT.ply',
-            ttt3r:
-                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/TTT3R.ply',
-            point3r:
-                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/POINT3R.ply',
-            cut3r:
-                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/CUT3R.ply'
+            redkitchen: {
+                voxelvggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/voxelVGGT.ply',
+                infinitevggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/infiniteVGGT.ply',
+                ttt3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/TTT3R.ply',
+                point3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/POINT3R.ply',
+                cut3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/CUT3R.ply'
+            },
+            pumpkin: {
+                voxelvggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/voxelVGGT.ply',
+                infinitevggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/infiniteVGGT.ply',
+                ttt3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/TTT3R.ply',
+                point3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/POINT3R.ply',
+                cut3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/CUT3R.ply'
+            }
         };
 
         // Parse and upload the complete point cloud in manageable GPU chunks.
@@ -317,6 +334,8 @@
                 pointCloudWorker.terminate();
                 pointCloudWorker = null;
             }
+
+            loadingPointCloudKey = null;
         }
 
         function disposePointCloud(pointCloud) {
@@ -339,6 +358,15 @@
 
             geometries.forEach(geometry => geometry.dispose());
             materials.forEach(material => material.dispose());
+
+            pointCloud.clear();
+
+            if (activePointCloud === pointCloud) {
+                activePointCloud = null;
+                activePointCloudKey = null;
+            }
+
+            renderer.renderLists.dispose();
         }
 
         function fitCameraToBounds(bounds) {
@@ -385,14 +413,6 @@
             controls.maxDistance = radius * 20;
             controls.update();
 
-            if (
-                activePointCloud &&
-                activePointCloud.userData &&
-                activePointCloud.userData.sharedMaterial
-            ) {
-                activePointCloud.userData.sharedMaterial.size =
-                    Math.max(radius / 2500, 0.001);
-            }
         }
 
         function createFullPlyWorker() {
@@ -790,8 +810,24 @@
             return worker;
         }
 
-        function loadPointCloud(url) {
+        function loadPointCloud(url, pointCloudKey) {
+            if (
+                pointCloudKey === activePointCloudKey &&
+                activePointCloud
+            ) {
+                hideLoading();
+                return;
+            }
+
+            if (
+                pointCloudKey === loadingPointCloudKey &&
+                pointCloudWorker
+            ) {
+                return;
+            }
+
             cancelPointCloudLoad();
+            loadingPointCloudKey = pointCloudKey;
 
             const requestId = pointCloudLoadRequestId;
 
@@ -809,6 +845,7 @@
 
             group.userData.sharedMaterial = material;
             group.userData.loadedPoints = 0;
+            group.userData.pointCloudKey = pointCloudKey;
 
             activePointCloud = group;
             scene.add(activePointCloud);
@@ -897,7 +934,13 @@
                     pointCountEl.innerText =
                         data.total.toLocaleString();
 
-                    fitCameraToBounds(data.bounds);
+                    if (fittedSceneKey !== currentScene) {
+                        fitCameraToBounds(data.bounds);
+                        fittedSceneKey = currentScene;
+                    }
+
+                    activePointCloudKey = pointCloudKey;
+                    loadingPointCloudKey = null;
                     hideLoading();
 
                     pointCloudWorker = null;
@@ -921,6 +964,8 @@
                         data.message
                     );
 
+                    loadingPointCloudKey = null;
+                    activePointCloudKey = null;
                     pointCloudWorker = null;
                 }
             };
@@ -933,6 +978,8 @@
                     'Open Developer Tools for details.'
                 );
 
+                loadingPointCloudKey = null;
+                activePointCloudKey = null;
                 pointCloudWorker = null;
             };
 
@@ -1079,8 +1126,8 @@
                         mem,
                         memColor: color,
                         url:
-                            s === 'redkitchen'
-                                ? (HUGGING_FACE_PLY_URLS[m] || null)
+                            HUGGING_FACE_PLY_URLS[s]
+                                ? (HUGGING_FACE_PLY_URLS[s][m] || null)
                                 : null
                     };
                 });
@@ -1092,7 +1139,13 @@
         // Switch Scene (Resets camera to optimize geometry framing)
         window.switchScene = function(sceneKey, btnElement) {
             if (!sceneDatabase[sceneKey]) return;
+
+            const sceneChanged = sceneKey !== currentScene;
             currentScene = sceneKey;
+
+            if (sceneChanged) {
+                fittedSceneKey = null;
+            }
 
             document.querySelectorAll('.scene-btn').forEach(btn => {
                 btn.classList.remove('scene-btn-active');
@@ -1101,9 +1154,11 @@
             btnElement.classList.add('scene-btn-active');
             sceneNameDisplay.innerText = sceneDatabase[sceneKey].name;
 
-            camera.position.copy(sceneDatabase[sceneKey].cameraPos);
-            controls.target.set(0, 0, 0);
-            controls.update();
+            if (sceneChanged) {
+                camera.position.copy(sceneDatabase[sceneKey].cameraPos);
+                controls.target.set(0, 0, 0);
+                controls.update();
+            }
 
             updateRenderedPointCloud();
         };
@@ -1127,12 +1182,23 @@
 
             if (!data) return;
 
+            const pointCloudKey =
+                `${currentScene}:${currentMethod}`;
+
             memUsageEl.innerText = data.mem;
             memUsageEl.className =
                 `font-bold ${data.memColor}`;
 
             if (data.url) {
-                loadPointCloud(data.url);
+                loadPointCloud(data.url, pointCloudKey);
+                return;
+            }
+
+            if (
+                pointCloudKey === activePointCloudKey &&
+                activePointCloud
+            ) {
+                hideLoading();
                 return;
             }
 
@@ -1144,6 +1210,7 @@
                 currentMethod
             );
 
+            activePointCloudKey = pointCloudKey;
             scene.add(activePointCloud);
             pointCountEl.innerText = data.pts;
             hideLoading();
