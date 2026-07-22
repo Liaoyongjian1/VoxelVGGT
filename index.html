@@ -75,14 +75,17 @@
                 <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
                     <div class="flex flex-wrap items-center space-x-2">
                         <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">Scene:</span>
-                        <button onclick="switchScene('chess', this)" class="scene-btn scene-btn-active px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
-                            7-Scenes: Chess
+                        <button onclick="switchScene('Redkitchen', this)" class="scene-btn scene-btn-active px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                            7-Scenes: Redkitchen
                         </button>
-                        <button onclick="switchScene('office', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
-                            NRGBD: Office
+                        <button onclick="switchScene('Pumpkin', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                            7-Scenes: Pumpkin
                         </button>
                         <button onclick="switchScene('driving', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
-                            KITTI: Driving Trajectory
+                            NRGBD: Driving Trajectory
+                        </button>
+                        <button onclick="switchScene('driving', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                            NRGBD: Driving Trajectory
                         </button>
                     </div>
                     <div class="text-xs text-slate-400 font-mono">
@@ -98,13 +101,16 @@
                             VoxelVGGT (Ours)
                         </button>
                         <button onclick="switchMethod('streamvggt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
-                            StreamVGGT
+                            InfiniteVGGT
                         </button>
                         <button onclick="switchMethod('cut3r', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
                             CUT3R
                         </button>
                         <button onclick="switchMethod('gt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
-                            Ground Truth
+                            Ponit3R
+                        </button>
+                        <button onclick="switchMethod('gt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
+                            TTT3R
                         </button>
                     </div>
                     <div class="flex items-center space-x-6 text-xs font-mono text-slate-300">
