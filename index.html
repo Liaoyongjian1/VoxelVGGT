@@ -157,7 +157,12 @@
         </figcaption>
     </figure>
         <p class="text-gray-700 leading-relaxed mb-6 text-justify">
-            
+            The overall architecture of Voxel-VGGT. After frame-by-frame backbone inference, the model maintains a keyframe
+constrained reference frame and a voxelized geometric memory, and outputs the camera pose, depth, and point cloud for the
+current frame. The keyframe module stabilizes the local geometric coordinate system through an active keyframe, a permanent
+global anchor, and a bounded FIFO ring of history anchors. The voxelized memory module lifts the current frame’s tokens into
+the active-keyframe-local 3D space and performs alignment, voxel-level deduplication, and budget-aware maintenance using a
+zero-overhead importance signal read from the backbone.
         </p>
     </section>
 
