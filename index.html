@@ -75,21 +75,21 @@
                 <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
                     <div class="flex flex-wrap items-center space-x-2">
                         <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">Scene:</span>
-                        <button onclick="switchScene('Redkitchen', this)" class="scene-btn scene-btn-active px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('redkitchen', this)" class="scene-btn scene-btn-active px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             7-Scenes: Redkitchen
                         </button>
-                        <button onclick="switchScene('Pumpkin', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('pumpkin', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             7-Scenes: Pumpkin
                         </button>
-                        <button onclick="switchScene('driving', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
-                            NRGBD: Driving Trajectory
+                        <button onclick="switchScene('kitti', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                            KITTI: Driving Trajectory
                         </button>
-                        <button onclick="switchScene('driving', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('nrgbd', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             NRGBD: Driving Trajectory
                         </button>
                     </div>
                     <div class="text-xs text-slate-400 font-mono">
-                        Active Dataset: <span id="scene-name-display" class="text-sky-400 font-bold">7-Scenes (Chess)</span>
+                        Active Dataset: <span id="scene-name-display" class="text-sky-400 font-bold">7-Scenes (Redkitchen)</span>
                     </div>
                 </div>
 
@@ -100,22 +100,22 @@
                         <button onclick="switchMethod('voxelvggt', this)" class="method-btn btn-active px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
                             VoxelVGGT (Ours)
                         </button>
-                        <button onclick="switchMethod('streamvggt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
+                        <button onclick="switchMethod('infinitevggt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
                             InfiniteVGGT
                         </button>
                         <button onclick="switchMethod('cut3r', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
                             CUT3R
                         </button>
-                        <button onclick="switchMethod('gt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
-                            Ponit3R
+                        <button onclick="switchMethod('point3r', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
+                            Point3R
                         </button>
-                        <button onclick="switchMethod('gt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
+                        <button onclick="switchMethod('ttt3r', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
                             TTT3R
                         </button>
                     </div>
-                    <div class="flex items-center space-x-6 text-xs font-mono text-slate-300">
-                        <div>Point Count: <span id="point-count" class="font-bold text-white">124,580</span></div>
-                        <div>Memory Cost: <span id="mem-usage" class="font-bold text-emerald-400">8.2 GB (O(1))</span></div>
+                    <div class="flex items-center text-xs font-mono text-slate-300">
+                        <span id="point-count" class="hidden"></span>
+                        <div>GPU Memory: <span id="mem-usage" class="font-bold text-emerald-400">9.35 GB</span></div>
                     </div>
                 </div>
 
@@ -225,7 +225,7 @@
         const sceneNameDisplay = document.getElementById('scene-name-display');
 
         // State Tracking
-        let currentScene = 'chess';
+        let currentScene = 'redkitchen';
         let currentMethod = 'voxelvggt';
 
         // 1. Scene, Camera, and Renderer Setup
@@ -254,19 +254,24 @@
 
         // 3. Multi-Scene Point Cloud Database
         const sceneDatabase = {
-            'chess': {
-                name: '7-Scenes (Chess)',
+            'redkitchen': {
+                name: '7-Scenes (Redkitchen)',
                 cameraPos: new THREE.Vector3(0, 4, 10),
                 methods: {}
             },
-            'office': {
-                name: 'NRGBD (Office)',
-                cameraPos: new THREE.Vector3(0, 6, 14),
+            'pumpkin': {
+                name: '7-Scenes (Pumpkin)',
+                cameraPos: new THREE.Vector3(0, 4, 10),
                 methods: {}
             },
-            'driving': {
+            'kitti': {
                 name: 'KITTI (Driving Trajectory)',
                 cameraPos: new THREE.Vector3(0, 10, 25),
+                methods: {}
+            },
+            'nrgbd': {
+                name: 'NRGBD (Driving Trajectory)',
+                cameraPos: new THREE.Vector3(0, 6, 14),
                 methods: {}
             }
         };
@@ -932,19 +937,19 @@
         function generateSyntheticPointCloud(sceneType, methodType) {
             let count, spreadX, spreadY, spreadZ, driftFactor;
 
-            if (sceneType === 'chess') {
-                count = methodType === 'streamvggt' ? 280000 : 120000;
+            if (sceneType === 'redkitchen' || sceneType === 'pumpkin') {
+                count = methodType === 'infinitevggt' ? 280000 : 120000;
                 spreadX = 8; spreadY = 4; spreadZ = 8; driftFactor = 0.1;
-            } else if (sceneType === 'office') {
-                count = methodType === 'streamvggt' ? 420000 : 180000;
+            } else if (sceneType === 'nrgbd') {
+                count = methodType === 'infinitevggt' ? 420000 : 180000;
                 spreadX = 14; spreadY = 5; spreadZ = 14; driftFactor = 0.15;
-            } else if (sceneType === 'driving') {
-                count = methodType === 'streamvggt' ? 550000 : 240000;
+            } else if (sceneType === 'kitti') {
+                count = methodType === 'infinitevggt' ? 550000 : 240000;
                 spreadX = 12; spreadY = 3; spreadZ = 36; driftFactor = 0.25;
             }
 
             if (methodType === 'cut3r') count = Math.floor(count * 0.85);
-            if (methodType === 'gt') count = Math.floor(count * 0.9);
+            if (methodType === 'point3r' || methodType === 'ttt3r') count = Math.floor(count * 0.9);
 
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(count * 3);
@@ -953,11 +958,11 @@
             const baseColor = new THREE.Color(
                 methodType === 'voxelvggt'
                     ? '#38bdf8'
-                    : (methodType === 'gt' ? '#34d399' : '#f87171')
+                    : ((methodType === 'point3r' || methodType === 'ttt3r') ? '#34d399' : '#f87171')
             );
 
             const farColor = new THREE.Color(
-                sceneType === 'driving' ? '#f59e0b' : '#818cf8'
+                sceneType === 'kitti' ? '#f59e0b' : '#818cf8'
             );
 
             for (let i = 0; i < count; i++) {
@@ -966,7 +971,7 @@
                 let z = (Math.random() - 0.5) * spreadZ;
 
                 if (
-                    methodType === 'streamvggt' &&
+                    methodType === 'infinitevggt' &&
                     z > spreadZ * 0.2
                 ) {
                     x +=
@@ -996,7 +1001,8 @@
 
                 if (
                     methodType !== 'voxelvggt' &&
-                    methodType !== 'gt' &&
+                    methodType !== 'point3r' &&
+                    methodType !== 'ttt3r' &&
                     Math.random() > 0.82
                 ) {
                     mixedColor.set('#64748b');
@@ -1029,41 +1035,33 @@
 
         // Initialize metadata only. Point clouds are created or downloaded on demand.
         function initDatabase() {
-            const scenes = ['chess', 'office', 'driving'];
-            const methods = ['voxelvggt', 'streamvggt', 'cut3r', 'gt'];
+            const scenes = ['redkitchen', 'pumpkin', 'kitti', 'nrgbd'];
+            const methods = ['voxelvggt', 'infinitevggt', 'cut3r', 'point3r', 'ttt3r'];
 
             scenes.forEach(s => {
                 methods.forEach(m => {
                     let pts = "120,000";
-                    let mem = "8.2 GB (O(1))";
+                    let mem = "9.35 GB";
                     let color = "text-emerald-400";
 
-                    if (m === 'streamvggt') {
-                        pts = "480,000";
-                        mem = "28.4 GB (OOM Risk)";
-                        color = "text-rose-500";
-                    }
-
-                    if (m === 'cut3r') {
-                        pts = "310,000";
-                        mem = "18.6 GB (O(T))";
+                    if (m === 'infinitevggt') {
+                        mem = "25.58 GB";
                         color = "text-amber-400";
                     }
 
-                    if (m === 'gt') {
-                        pts = "115,000";
-                        mem = "Ground Truth Reference";
-                        color = "text-sky-400";
+                    if (m === 'cut3r') {
+                        mem = "47.83 GB";
+                        color = "text-rose-500";
                     }
 
-                    if (s === 'driving' && m === 'streamvggt') {
-                        pts = "620,000";
-                        mem = "34.1 GB (OOM)";
+                    if (m === 'point3r') {
+                        mem = "45.34 GB";
+                        color = "text-rose-400";
                     }
 
-                    if (s === 'driving' && m === 'voxelvggt') {
-                        pts = "142,000";
-                        mem = "8.4 GB (O(1))";
+                    if (m === 'ttt3r') {
+                        mem = "47.83 GB";
+                        color = "text-rose-500";
                     }
 
                     sceneDatabase[s].methods[m] = {
@@ -1071,7 +1069,7 @@
                         mem,
                         memColor: color,
                         url:
-                            s === 'chess' && m === 'voxelvggt'
+                            s === 'redkitchen' && m === 'voxelvggt'
                                 ? HUGGING_FACE_PLY_URL
                                 : null
                     };
