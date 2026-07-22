@@ -655,11 +655,19 @@
                                     propertyMap.z
                                 );
 
+                                // Coordinate-system conversion:
+                                // VGGT/OpenCV: +X right, +Y down, +Z forward
+                                // Three.js:    +X right, +Y up,   -Z forward
+                                // This is a 180-degree rotation around the X axis.
+                                const transformedX = x;
+                                const transformedY = -y;
+                                const transformedZ = -z;
+
                                 const out = j * 3;
 
-                                positions[out] = x;
-                                positions[out + 1] = y;
-                                positions[out + 2] = z;
+                                positions[out] = transformedX;
+                                positions[out + 1] = transformedY;
+                                positions[out + 2] = transformedZ;
 
                                 colors[out] = redProperty
                                     ? readProperty(
@@ -685,12 +693,13 @@
                                       )
                                     : 248;
 
-                                if (x < minX) minX = x;
-                                if (y < minY) minY = y;
-                                if (z < minZ) minZ = z;
-                                if (x > maxX) maxX = x;
-                                if (y > maxY) maxY = y;
-                                if (z > maxZ) maxZ = z;
+                                if (transformedX < minX) minX = transformedX;
+                                if (transformedY < minY) minY = transformedY;
+                                if (transformedZ < minZ) minZ = transformedZ;
+
+                                if (transformedX > maxX) maxX = transformedX;
+                                if (transformedY > maxY) maxY = transformedY;
+                                if (transformedZ > maxZ) maxZ = transformedZ;
                             }
 
                             const loaded =
