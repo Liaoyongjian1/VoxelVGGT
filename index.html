@@ -280,8 +280,18 @@
         let pointCloudLoadRequestId = 0;
         let pointCloudWorker = null;
 
-        const HUGGING_FACE_PLY_URL =
-            'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/voxelVGGT.ply';
+        const HUGGING_FACE_PLY_URLS = {
+            voxelvggt:
+                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/voxelVGGT.ply',
+            infinitevggt:
+                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/infiniteVGGT.ply',
+            ttt3r:
+                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/TTT3R.ply',
+            point3r:
+                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/POINT3R.ply',
+            cut3r:
+                'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/CUT3R.ply'
+        };
 
         // Parse and upload the complete point cloud in manageable GPU chunks.
         const POINTS_PER_CHUNK = 750000;
@@ -1069,8 +1079,8 @@
                         mem,
                         memColor: color,
                         url:
-                            s === 'redkitchen' && m === 'voxelvggt'
-                                ? HUGGING_FACE_PLY_URL
+                            s === 'redkitchen'
+                                ? (HUGGING_FACE_PLY_URLS[m] || null)
                                 : null
                     };
                 });
