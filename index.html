@@ -257,10 +257,13 @@
 
         let activePointCloud = null;
         let pointCloudLoadRequestId = 0;
+        let pointCloudWorker = null;
 
-        const plyLoader = new THREE.PLYLoader();
         const HUGGING_FACE_PLY_URL =
             'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkichens/voxelVGGT.ply';
+
+        // Parse and upload the complete point cloud in manageable GPU chunks.
+        const POINTS_PER_CHUNK = 750000;
 
         function showLoading(message) {
             loadingOverlay.style.display = 'flex';
@@ -276,26 +279,55 @@
             }, 300);
         }
 
+        function cancelPointCloudLoad() {
+            pointCloudLoadRequestId += 1;
+
+            if (pointCloudWorker) {
+                pointCloudWorker.terminate();
+                pointCloudWorker = null;
+            }
+        }
+
         function disposePointCloud(pointCloud) {
             if (!pointCloud) return;
 
             scene.remove(pointCloud);
 
-            if (pointCloud.geometry) {
-                pointCloud.geometry.dispose();
-            }
+            const geometries = new Set();
+            const materials = new Set();
 
-            if (pointCloud.material) {
-                pointCloud.material.dispose();
-            }
+            pointCloud.traverse(object => {
+                if (object.geometry) geometries.add(object.geometry);
+
+                if (Array.isArray(object.material)) {
+                    object.material.forEach(material => materials.add(material));
+                } else if (object.material) {
+                    materials.add(object.material);
+                }
+            });
+
+            geometries.forEach(geometry => geometry.dispose());
+            materials.forEach(material => material.dispose());
         }
 
-        function fitCameraToPointCloud(geometry) {
-            geometry.computeBoundingSphere();
-            const sphere = geometry.boundingSphere;
+        function fitCameraToBounds(bounds) {
+            const min = new THREE.Vector3(
+                bounds.minX,
+                bounds.minY,
+                bounds.minZ
+            );
+
+            const max = new THREE.Vector3(
+                bounds.maxX,
+                bounds.maxY,
+                bounds.maxZ
+            );
+
+            const box = new THREE.Box3(min, max);
+            const sphere = new THREE.Sphere();
+            box.getBoundingSphere(sphere);
 
             if (
-                !sphere ||
                 !Number.isFinite(sphere.radius) ||
                 sphere.radius <= 0
             ) {
@@ -321,103 +353,554 @@
             controls.minDistance = Math.max(radius * 0.01, 0.01);
             controls.maxDistance = radius * 20;
             controls.update();
+
+            if (
+                activePointCloud &&
+                activePointCloud.userData &&
+                activePointCloud.userData.sharedMaterial
+            ) {
+                activePointCloud.userData.sharedMaterial.size =
+                    Math.max(radius / 2500, 0.001);
+            }
+        }
+
+        function createFullPlyWorker() {
+            const workerSource = `
+                const TYPE_INFO = {
+                    char:   { size: 1, getter: 'getInt8' },
+                    int8:   { size: 1, getter: 'getInt8' },
+                    uchar:  { size: 1, getter: 'getUint8' },
+                    uint8:  { size: 1, getter: 'getUint8' },
+                    short:  { size: 2, getter: 'getInt16' },
+                    int16:  { size: 2, getter: 'getInt16' },
+                    ushort: { size: 2, getter: 'getUint16' },
+                    uint16: { size: 2, getter: 'getUint16' },
+                    int:    { size: 4, getter: 'getInt32' },
+                    int32:  { size: 4, getter: 'getInt32' },
+                    uint:   { size: 4, getter: 'getUint32' },
+                    uint32: { size: 4, getter: 'getUint32' },
+                    float:  { size: 4, getter: 'getFloat32' },
+                    float32:{ size: 4, getter: 'getFloat32' },
+                    double: { size: 8, getter: 'getFloat64' },
+                    float64:{ size: 8, getter: 'getFloat64' }
+                };
+
+                function findHeaderEnd(bytes) {
+                    const marker = [
+                        101, 110, 100, 95, 104,
+                        101, 97, 100, 101, 114
+                    ];
+
+                    const limit = Math.min(bytes.length, 1024 * 1024);
+
+                    outer:
+                    for (let i = 0; i <= limit - marker.length; i++) {
+                        for (let j = 0; j < marker.length; j++) {
+                            if (bytes[i + j] !== marker[j]) {
+                                continue outer;
+                            }
+                        }
+
+                        let dataOffset = i + marker.length;
+
+                        while (
+                            dataOffset < bytes.length &&
+                            (bytes[dataOffset] === 10 ||
+                             bytes[dataOffset] === 13)
+                        ) {
+                            dataOffset += 1;
+                        }
+
+                        return {
+                            markerEnd: i + marker.length,
+                            dataOffset
+                        };
+                    }
+
+                    throw new Error('PLY end_header marker was not found.');
+                }
+
+                function parseHeader(bytes, markerEnd) {
+                    const headerText = new TextDecoder().decode(
+                        bytes.subarray(0, markerEnd)
+                    );
+
+                    const lines = headerText
+                        .split(/\\r?\\n/)
+                        .map(line => line.trim())
+                        .filter(Boolean);
+
+                    const formatLine = lines.find(line =>
+                        line.startsWith('format ')
+                    );
+
+                    if (
+                        !formatLine ||
+                        !formatLine.includes('binary_little_endian')
+                    ) {
+                        throw new Error(
+                            'Only binary_little_endian PLY is supported.'
+                        );
+                    }
+
+                    const vertexLineIndex = lines.findIndex(line =>
+                        line.startsWith('element vertex ')
+                    );
+
+                    if (vertexLineIndex < 0) {
+                        throw new Error('PLY vertex element is missing.');
+                    }
+
+                    const vertexCount = Number(
+                        lines[vertexLineIndex].split(/\\s+/)[2]
+                    );
+
+                    if (
+                        !Number.isInteger(vertexCount) ||
+                        vertexCount <= 0
+                    ) {
+                        throw new Error('Invalid PLY vertex count.');
+                    }
+
+                    const properties = [];
+                    let stride = 0;
+
+                    for (
+                        let i = vertexLineIndex + 1;
+                        i < lines.length;
+                        i++
+                    ) {
+                        const line = lines[i];
+
+                        if (line.startsWith('element ')) break;
+                        if (!line.startsWith('property ')) continue;
+
+                        const parts = line.split(/\\s+/);
+
+                        if (parts[1] === 'list') {
+                            throw new Error(
+                                'List properties before vertices are unsupported.'
+                            );
+                        }
+
+                        const type = parts[1];
+                        const name = parts[2];
+                        const info = TYPE_INFO[type];
+
+                        if (!info) {
+                            throw new Error(
+                                'Unsupported PLY property type: ' + type
+                            );
+                        }
+
+                        properties.push({
+                            type,
+                            name,
+                            offset: stride,
+                            size: info.size,
+                            getter: info.getter
+                        });
+
+                        stride += info.size;
+                    }
+
+                    const propertyMap = Object.fromEntries(
+                        properties.map(property => [
+                            property.name,
+                            property
+                        ])
+                    );
+
+                    for (const name of ['x', 'y', 'z']) {
+                        if (!propertyMap[name]) {
+                            throw new Error(
+                                'Required PLY property is missing: ' + name
+                            );
+                        }
+                    }
+
+                    return {
+                        vertexCount,
+                        stride,
+                        propertyMap
+                    };
+                }
+
+                function readProperty(view, byteOffset, property) {
+                    if (property.size === 1) {
+                        return view[property.getter](byteOffset);
+                    }
+
+                    return view[property.getter](byteOffset, true);
+                }
+
+                self.onmessage = async event => {
+                    const {
+                        url,
+                        requestId,
+                        pointsPerChunk
+                    } = event.data;
+
+                    try {
+                        self.postMessage({
+                            type: 'status',
+                            requestId,
+                            message: 'Downloading the full 618 MB PLY...'
+                        });
+
+                        const response = await fetch(url);
+
+                        if (!response.ok) {
+                            throw new Error(
+                                'HTTP ' + response.status + ' ' +
+                                response.statusText
+                            );
+                        }
+
+                        const buffer = await response.arrayBuffer();
+                        const bytes = new Uint8Array(buffer);
+
+                        self.postMessage({
+                            type: 'status',
+                            requestId,
+                            message: 'Parsing 22.9 million vertices...'
+                        });
+
+                        const {
+                            markerEnd,
+                            dataOffset
+                        } = findHeaderEnd(bytes);
+
+                        const {
+                            vertexCount,
+                            stride,
+                            propertyMap
+                        } = parseHeader(bytes, markerEnd);
+
+                        const expectedBytes =
+                            dataOffset + vertexCount * stride;
+
+                        if (buffer.byteLength < expectedBytes) {
+                            throw new Error(
+                                'PLY data is truncated: expected ' +
+                                expectedBytes + ' bytes, received ' +
+                                buffer.byteLength + ' bytes.'
+                            );
+                        }
+
+                        const view = new DataView(buffer);
+
+                        let minX = Infinity;
+                        let minY = Infinity;
+                        let minZ = Infinity;
+                        let maxX = -Infinity;
+                        let maxY = -Infinity;
+                        let maxZ = -Infinity;
+
+                        const redProperty =
+                            propertyMap.red || propertyMap.diffuse_red;
+
+                        const greenProperty =
+                            propertyMap.green || propertyMap.diffuse_green;
+
+                        const blueProperty =
+                            propertyMap.blue || propertyMap.diffuse_blue;
+
+                        for (
+                            let chunkStart = 0;
+                            chunkStart < vertexCount;
+                            chunkStart += pointsPerChunk
+                        ) {
+                            const chunkCount = Math.min(
+                                pointsPerChunk,
+                                vertexCount - chunkStart
+                            );
+
+                            const positions =
+                                new Float32Array(chunkCount * 3);
+
+                            const colors =
+                                new Uint8Array(chunkCount * 3);
+
+                            for (let j = 0; j < chunkCount; j++) {
+                                const vertexIndex = chunkStart + j;
+                                const base =
+                                    dataOffset + vertexIndex * stride;
+
+                                const x = readProperty(
+                                    view,
+                                    base + propertyMap.x.offset,
+                                    propertyMap.x
+                                );
+
+                                const y = readProperty(
+                                    view,
+                                    base + propertyMap.y.offset,
+                                    propertyMap.y
+                                );
+
+                                const z = readProperty(
+                                    view,
+                                    base + propertyMap.z.offset,
+                                    propertyMap.z
+                                );
+
+                                const out = j * 3;
+
+                                positions[out] = x;
+                                positions[out + 1] = y;
+                                positions[out + 2] = z;
+
+                                colors[out] = redProperty
+                                    ? readProperty(
+                                        view,
+                                        base + redProperty.offset,
+                                        redProperty
+                                      )
+                                    : 56;
+
+                                colors[out + 1] = greenProperty
+                                    ? readProperty(
+                                        view,
+                                        base + greenProperty.offset,
+                                        greenProperty
+                                      )
+                                    : 189;
+
+                                colors[out + 2] = blueProperty
+                                    ? readProperty(
+                                        view,
+                                        base + blueProperty.offset,
+                                        blueProperty
+                                      )
+                                    : 248;
+
+                                if (x < minX) minX = x;
+                                if (y < minY) minY = y;
+                                if (z < minZ) minZ = z;
+                                if (x > maxX) maxX = x;
+                                if (y > maxY) maxY = y;
+                                if (z > maxZ) maxZ = z;
+                            }
+
+                            const loaded =
+                                chunkStart + chunkCount;
+
+                            self.postMessage(
+                                {
+                                    type: 'chunk',
+                                    requestId,
+                                    positions: positions.buffer,
+                                    colors: colors.buffer,
+                                    chunkCount,
+                                    loaded,
+                                    total: vertexCount
+                                },
+                                [
+                                    positions.buffer,
+                                    colors.buffer
+                                ]
+                            );
+
+                            self.postMessage({
+                                type: 'progress',
+                                requestId,
+                                loaded,
+                                total: vertexCount
+                            });
+                        }
+
+                        self.postMessage({
+                            type: 'done',
+                            requestId,
+                            total: vertexCount,
+                            bounds: {
+                                minX,
+                                minY,
+                                minZ,
+                                maxX,
+                                maxY,
+                                maxZ
+                            }
+                        });
+
+                        self.close();
+                    } catch (error) {
+                        self.postMessage({
+                            type: 'error',
+                            requestId,
+                            message:
+                                error && error.message
+                                    ? error.message
+                                    : String(error)
+                        });
+                    }
+                };
+            `;
+
+            const blob = new Blob(
+                [workerSource],
+                { type: 'application/javascript' }
+            );
+
+            const workerUrl = URL.createObjectURL(blob);
+            const worker = new Worker(workerUrl);
+
+            URL.revokeObjectURL(workerUrl);
+            return worker;
         }
 
         function loadPointCloud(url) {
-            const requestId = ++pointCloudLoadRequestId;
+            cancelPointCloudLoad();
 
-            showLoading('Connecting to Hugging Face...');
+            const requestId = pointCloudLoadRequestId;
 
-            plyLoader.load(
-                url,
+            disposePointCloud(activePointCloud);
 
-                function (geometry) {
-                    if (requestId !== pointCloudLoadRequestId) {
-                        geometry.dispose();
-                        return;
-                    }
+            const group = new THREE.Group();
 
-                    const position = geometry.getAttribute('position');
+            const material = new THREE.PointsMaterial({
+                size: 0.002,
+                sizeAttenuation: true,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.95
+            });
 
-                    if (!position || position.count === 0) {
-                        geometry.dispose();
-                        showLoading('PLY file contains no valid vertices.');
-                        return;
-                    }
+            group.userData.sharedMaterial = material;
+            group.userData.loadedPoints = 0;
 
-                    geometry.computeBoundingSphere();
+            activePointCloud = group;
+            scene.add(activePointCloud);
 
-                    const radius =
-                        geometry.boundingSphere &&
-                        Number.isFinite(geometry.boundingSphere.radius)
-                            ? geometry.boundingSphere.radius
-                            : 1;
+            pointCountEl.innerText = 'Loading...';
+            showLoading('Starting full-resolution point-cloud load...');
 
-                    const hasVertexColor = geometry.hasAttribute('color');
+            pointCloudWorker = createFullPlyWorker();
 
-                    const material = new THREE.PointsMaterial({
-                        size: Math.max(radius / 1500, 0.002),
-                        sizeAttenuation: true,
-                        vertexColors: hasVertexColor,
-                        color: hasVertexColor ? 0xffffff : 0x38bdf8,
-                        transparent: true,
-                        opacity: 0.95
+            pointCloudWorker.onmessage = event => {
+                const data = event.data;
+
+                if (data.requestId !== pointCloudLoadRequestId) return;
+
+                if (data.type === 'status') {
+                    showLoading(data.message);
+                    return;
+                }
+
+                if (data.type === 'progress') {
+                    const percent =
+                        ((data.loaded / data.total) * 100).toFixed(1);
+
+                    showLoading(
+                        `Parsing full point cloud: ${percent}% ` +
+                        `(${data.loaded.toLocaleString()} / ` +
+                        `${data.total.toLocaleString()} points)`
+                    );
+
+                    return;
+                }
+
+                if (data.type === 'chunk') {
+                    const positions =
+                        new Float32Array(data.positions);
+
+                    const colors =
+                        new Uint8Array(data.colors);
+
+                    const geometry = new THREE.BufferGeometry();
+
+                    const positionAttribute =
+                        new THREE.BufferAttribute(positions, 3);
+
+                    const colorAttribute =
+                        new THREE.BufferAttribute(colors, 3, true);
+
+                    // Release CPU-side arrays after WebGL upload.
+                    positionAttribute.onUpload(function () {
+                        this.array = null;
                     });
 
-                    disposePointCloud(activePointCloud);
+                    colorAttribute.onUpload(function () {
+                        this.array = null;
+                    });
 
-                    activePointCloud = new THREE.Points(
+                    geometry.setAttribute(
+                        'position',
+                        positionAttribute
+                    );
+
+                    geometry.setAttribute(
+                        'color',
+                        colorAttribute
+                    );
+
+                    const points = new THREE.Points(
                         geometry,
                         material
                     );
 
-                    scene.add(activePointCloud);
+                    // Global bounds are supplied by the worker at completion.
+                    points.frustumCulled = false;
+
+                    group.add(points);
+
+                    group.userData.loadedPoints += data.chunkCount;
 
                     pointCountEl.innerText =
-                        position.count.toLocaleString();
+                        group.userData.loadedPoints.toLocaleString();
 
-                    fitCameraToPointCloud(geometry);
+                    return;
+                }
+
+                if (data.type === 'done') {
+                    pointCountEl.innerText =
+                        data.total.toLocaleString();
+
+                    fitCameraToBounds(data.bounds);
                     hideLoading();
 
+                    pointCloudWorker = null;
+
                     console.log(
-                        `Loaded ${position.count.toLocaleString()} points`
+                        `Loaded the complete point cloud: ` +
+                        `${data.total.toLocaleString()} points`
                     );
-                },
 
-                function (xhr) {
-                    if (requestId !== pointCloudLoadRequestId) return;
-
-                    const downloadedMB =
-                        (xhr.loaded / 1024 / 1024).toFixed(1);
-
-                    if (xhr.lengthComputable && xhr.total > 0) {
-                        const progress =
-                            ((xhr.loaded / xhr.total) * 100).toFixed(1);
-
-                        const totalMB =
-                            (xhr.total / 1024 / 1024).toFixed(1);
-
-                        showLoading(
-                            `Downloading: ${progress}% ` +
-                            `(${downloadedMB}/${totalMB} MB)`
-                        );
-                    } else {
-                        showLoading(
-                            `Downloaded ${downloadedMB} MB...`
-                        );
-                    }
-                },
-
-                function (error) {
-                    if (requestId !== pointCloudLoadRequestId) return;
-
-                    console.error('Failed to load PLY:', error);
-                    showLoading(
-                        'Failed to load point cloud. ' +
-                        'Open Developer Tools for details.'
-                    );
+                    return;
                 }
-            );
+
+                if (data.type === 'error') {
+                    console.error(
+                        'Full PLY loading failed:',
+                        data.message
+                    );
+
+                    showLoading(
+                        'Full point-cloud loading failed: ' +
+                        data.message
+                    );
+
+                    pointCloudWorker = null;
+                }
+            };
+
+            pointCloudWorker.onerror = error => {
+                console.error('PLY worker error:', error);
+
+                showLoading(
+                    'Full point-cloud worker failed. ' +
+                    'Open Developer Tools for details.'
+                );
+
+                pointCloudWorker = null;
+            };
+
+            pointCloudWorker.postMessage({
+                url,
+                requestId,
+                pointsPerChunk: POINTS_PER_CHUNK
+            });
         }
 
         // Synthetic Generator for the remaining placeholder combinations.
@@ -559,8 +1042,8 @@
                     }
 
                     sceneDatabase[s].methods[m] = {
-                        pts: pts,
-                        mem: mem,
+                        pts,
+                        mem,
                         memColor: color,
                         url:
                             s === 'chess' && m === 'voxelvggt'
@@ -616,14 +1099,11 @@
                 `font-bold ${data.memColor}`;
 
             if (data.url) {
-                pointCountEl.innerText = 'Loading...';
                 loadPointCloud(data.url);
                 return;
             }
 
-            // Invalidate any previous remote request before showing a placeholder.
-            pointCloudLoadRequestId += 1;
-
+            cancelPointCloudLoad();
             disposePointCloud(activePointCloud);
 
             activePointCloud = generateSyntheticPointCloud(
