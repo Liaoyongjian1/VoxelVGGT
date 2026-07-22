@@ -142,19 +142,32 @@
     </section>
 
     <!-- Methodology Section -->
-    <section id="method" class="max-w-4xl mx-auto px-4 py-12">
-        <h2 class="text-2xl font-bold text-gray-900 mb-4 border-b pb-2">Methodology</h2>
-        <figure class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-        <img src="./static/images/pipeline.png">
-        <p class="text-gray-700 leading-relaxed mb-6 text-justify">
-            The overall architecture of Voxel-VGGT. After frame-by-frame backbone inference, the model maintains a keyframe
-constrained reference frame and a voxelized geometric memory, and outputs the camera pose, depth, and point cloud for the
-current frame. The keyframe module stabilizes the local geometric coordinate system through an active keyframe, a permanent
-global anchor, and a bounded FIFO ring of history anchors. The voxelized memory module lifts the current frame’s tokens into
-the active-keyframe-local 3D space and performs alignment, voxel-level deduplication, and budget-aware maintenance using a
-zero-overhead importance signal read from the backbone.
-        </p>
-    </section>
+<section id="method" class="max-w-6xl mx-auto px-4 py-12">
+    <h2 class="text-4xl font-bold text-gray-900 mb-6 border-b pb-2">
+        Methodology
+    </h2>
+
+    <figure class="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+        <img
+            src="./static/images/pipeline.png"
+            alt="VoxelVGGT methodology pipeline"
+            class="w-full h-auto rounded-xl"
+        >
+    </figure>
+
+    <p class="mt-4 text-gray-700 leading-relaxed text-justify">
+        The overall architecture of VoxelVGGT. After frame-by-frame backbone
+        inference, the model maintains a keyframe-constrained reference frame
+        and a voxelized geometric memory, and outputs the camera pose, depth,
+        and point cloud for the current frame. The keyframe module stabilizes
+        the local geometric coordinate system through an active keyframe, a
+        permanent global anchor, and a bounded FIFO ring of history anchors.
+        The voxelized memory module lifts the current frame’s tokens into the
+        active-keyframe-local 3D space and performs alignment, voxel-level
+        deduplication, and budget-aware maintenance using a zero-overhead
+        importance signal read from the backbone.
+    </p>
+</section>
 
     <!-- Results Section -->
     <section id="results" class="max-w-4xl mx-auto px-4 py-12">
