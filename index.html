@@ -81,10 +81,10 @@
                         <button onclick="switchScene('pumpkin', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             7-Scenes: Pumpkin
                         </button>
-                        <button onclick="switchScene('nrgbd', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('green_room', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             NRGBD: Green_room
                         </button>
-                        <button onclick="switchScene('nrgbd', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('morning_apartment', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             NRGBD: Morning_apartment
                         </button>
                     </div>
@@ -281,13 +281,13 @@
                 cameraPos: new THREE.Vector3(0, 4, 10),
                 methods: {}
             },
-            'kitti': {
-                name: 'KITTI (Driving Trajectory)',
-                cameraPos: new THREE.Vector3(0, 10, 25),
+            'green_room': {
+                name: 'NRGBD (Green_room)',
+                cameraPos: new THREE.Vector3(0, 6, 14),
                 methods: {}
             },
-            'nrgbd': {
-                name: 'NRGBD (Driving Trajectory)',
+            'morning_apartment': {
+                name: 'NRGBD (Morning_apartment)',
                 cameraPos: new THREE.Vector3(0, 6, 14),
                 methods: {}
             }
@@ -324,6 +324,30 @@
                     'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/POINT3R.ply',
                 cut3r:
                     'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/CUT3R.ply'
+            },
+            green_room: {
+                voxelvggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/VoxelVGGT.ply',
+                infinitevggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/InfiniteVGGT.ply',
+                ttt3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/TTT3R.ply',
+                point3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/Point3R.ply',
+                cut3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/CUT3R.ply'
+            },
+            morning_apartment: {
+                voxelvggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/VoxelVGGT.ply',
+                infinitevggt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/InfiniteVGGT.ply',
+                ttt3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/TTT3R.ply',
+                point3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/Point3R.ply',
+                cut3r:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/CUT3R.ply'
             }
         };
 
@@ -1187,12 +1211,9 @@
             if (sceneType === 'redkitchen' || sceneType === 'pumpkin') {
                 count = methodType === 'infinitevggt' ? 280000 : 120000;
                 spreadX = 8; spreadY = 4; spreadZ = 8; driftFactor = 0.1;
-            } else if (sceneType === 'nrgbd') {
+            } else if (sceneType === 'green_room' || sceneType === 'morning_apartment') {
                 count = methodType === 'infinitevggt' ? 420000 : 180000;
                 spreadX = 14; spreadY = 5; spreadZ = 14; driftFactor = 0.15;
-            } else if (sceneType === 'kitti') {
-                count = methodType === 'infinitevggt' ? 550000 : 240000;
-                spreadX = 12; spreadY = 3; spreadZ = 36; driftFactor = 0.25;
             }
 
             if (methodType === 'cut3r') count = Math.floor(count * 0.85);
@@ -1209,7 +1230,7 @@
             );
 
             const farColor = new THREE.Color(
-                sceneType === 'kitti' ? '#f59e0b' : '#818cf8'
+                (sceneType === 'green_room' || sceneType === 'morning_apartment') ? '#f59e0b' : '#818cf8'
             );
 
             for (let i = 0; i < count; i++) {
@@ -1282,7 +1303,7 @@
 
         // Initialize metadata only. Point clouds are created or downloaded on demand.
         function initDatabase() {
-            const scenes = ['redkitchen', 'pumpkin', 'kitti', 'nrgbd'];
+            const scenes = ['redkitchen', 'pumpkin', 'green_room', 'morning_apartment'];
             const methods = ['voxelvggt', 'infinitevggt', 'cut3r', 'point3r', 'ttt3r'];
 
             scenes.forEach(s => {
