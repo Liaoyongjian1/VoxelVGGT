@@ -12,7 +12,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/PLYLoader.js"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        #canvas-container { width: 100%; height: 620px; position: relative; background: #0f172a; border-radius: 0.75rem; overflow: hidden; }
+        #canvas-container { width: 100%a; height: 620px; position: relative; background: #0f172a; border-radius: 0.75rem; overflow: hidden; }
         .btn-active { background-color: #2563eb !important; color: #ffffff !important; border-color: #2563eb !important; }
         .scene-btn-active { background-color: #334155 !important; color: #38bdf8 !important; border-color: #38bdf8 !important; }
     </style>
@@ -146,6 +146,53 @@
             <div class="flex justify-between items-center mt-4 text-xs text-gray-400 font-mono">
                 <div>Tip: Camera viewpoint remains locked during method switches for rigorous visual alignment.</div>
                 <div>Render Engine: Three.js (WebGL)</div>
+            </div>
+
+            <!-- Scene Reference Images -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-8">
+                <figure>
+                    <img
+                        src="./static/images/redkitchen.png"
+                        alt="7-Scenes Redkitchen"
+                        class="w-full h-auto rounded-xl border border-gray-200"
+                    >
+                    <figcaption class="mt-2 text-center text-sm text-gray-600">
+                        7-Scenes: Redkitchen
+                    </figcaption>
+                </figure>
+
+                <figure>
+                    <img
+                        src="./static/images/pumpkin.png"
+                        alt="7-Scenes Pumpkin"
+                        class="w-full h-auto rounded-xl border border-gray-200"
+                    >
+                    <figcaption class="mt-2 text-center text-sm text-gray-600">
+                        7-Scenes: Pumpkin
+                    </figcaption>
+                </figure>
+
+                <figure>
+                    <img
+                        src="./static/images/green_home.png"
+                        alt="NRGBD Green room"
+                        class="w-full h-auto rounded-xl border border-gray-200"
+                    >
+                    <figcaption class="mt-2 text-center text-sm text-gray-600">
+                        NRGBD: Green_room
+                    </figcaption>
+                </figure>
+
+                <figure>
+                    <img
+                        src="./static/images/apartment.png"
+                        alt="NRGBD Morning apartment"
+                        class="w-full h-auto rounded-xl border border-gray-200"
+                    >
+                    <figcaption class="mt-2 text-center text-sm text-gray-600">
+                        NRGBD: Morning_apartment
+                    </figcaption>
+                </figure>
             </div>
         </div>
     </section>
