@@ -75,7 +75,7 @@
                 <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
                     <div class="flex flex-wrap items-center space-x-2">
                         <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider px-2">Scene:</span>
-                        <button onclick="switchScene('redkitchen', this)" class="scene-btn scene-btn-active px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('redkitchen', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             7-Scenes: Redkitchen
                         </button>
                         <button onclick="switchScene('pumpkin', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
@@ -84,12 +84,12 @@
                         <button onclick="switchScene('green_room', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             NRGBD: Green_room
                         </button>
-                        <button onclick="switchScene('morning_apartment', this)" class="scene-btn px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
+                        <button onclick="switchScene('morning_apartment', this)" class="scene-btn scene-btn-active px-3 py-1.5 text-xs font-medium rounded-md bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition">
                             NRGBD: Morning_apartment
                         </button>
                     </div>
                     <div class="text-xs text-slate-400 font-mono">
-                        Active Dataset: <span id="scene-name-display" class="text-sky-400 font-bold">7-Scenes (Redkitchen)</span>
+                        Active Dataset: <span id="scene-name-display" class="text-sky-400 font-bold">NRGBD (Morning_apartment)</span>
                     </div>
                 </div>
 
@@ -111,6 +111,9 @@
                         </button>
                         <button onclick="switchMethod('ttt3r', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
                             TTT3R
+                        </button>
+                        <button onclick="switchMethod('gt', this)" class="method-btn px-4 py-2 text-sm font-medium rounded-lg bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700 transition shadow-sm">
+                            GT
                         </button>
                     </div>
                     <div class="flex items-center text-xs font-mono text-slate-300">
@@ -290,7 +293,7 @@
         const sceneNameDisplay = document.getElementById('scene-name-display');
 
         // State Tracking
-        let currentScene = 'redkitchen';
+        let currentScene = 'morning_apartment';
         let currentMethod = 'voxelvggt';
 
         // 1. Scene, Camera, and Renderer Setup
@@ -359,7 +362,9 @@
                 point3r:
                     'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/POINT3R.ply',
                 cut3r:
-                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/CUT3R.ply'
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/CUT3R.ply',
+                gt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/redkitchens/gt.ply'
             },
             pumpkin: {
                 voxelvggt:
@@ -371,7 +376,9 @@
                 point3r:
                     'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/POINT3R.ply',
                 cut3r:
-                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/CUT3R.ply'
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/CUT3R.ply',
+                gt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/pumpkin/gt.ply'
             },
             green_room: {
                 voxelvggt:
@@ -383,7 +390,9 @@
                 point3r:
                     'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/Point3R.ply',
                 cut3r:
-                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/CUT3R.ply'
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/CUT3R.ply',
+                gt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/green_room/GT.ply'
             },
             morning_apartment: {
                 voxelvggt:
@@ -395,7 +404,9 @@
                 point3r:
                     'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/Point3R.ply',
                 cut3r:
-                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/CUT3R.ply'
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/CUT3R.ply',
+                gt:
+                    'https://huggingface.co/datasets/dliaodas/voxelvggt/resolve/main/morning_apartment/GT.ply'
             }
         };
 
@@ -1352,7 +1363,7 @@
         // Initialize metadata only. Point clouds are created or downloaded on demand.
         function initDatabase() {
             const scenes = ['redkitchen', 'pumpkin', 'green_room', 'morning_apartment'];
-            const methods = ['voxelvggt', 'infinitevggt', 'cut3r', 'point3r', 'ttt3r'];
+            const methods = ['voxelvggt', 'infinitevggt', 'cut3r', 'point3r', 'ttt3r', 'gt'];
 
             scenes.forEach(s => {
                 methods.forEach(m => {
@@ -1378,6 +1389,11 @@
                     if (m === 'ttt3r') {
                         mem = "47.83 GB";
                         color = "text-rose-500";
+                    }
+
+                    if (m === 'gt') {
+                        mem = "N/A";
+                        color = "text-sky-400";
                     }
 
                     sceneDatabase[s].methods[m] = {
